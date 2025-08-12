@@ -57,6 +57,10 @@ export class TraceProvider {
     this.#disabled = disabled;
   }
 
+  isDisabled(): boolean {
+    return this.#disabled;
+  }
+
   startExportLoop(): void {
     this.#multiProcessor.start();
   }

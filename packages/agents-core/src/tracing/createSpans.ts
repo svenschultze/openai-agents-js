@@ -32,10 +32,13 @@ function _withSpanFactory<
     fn: (span: Span<TData>) => Promise<TOutput>,
     ...args: Parameters<TCreateSpanFunction>
   ) => {
-    // Creating a new span context to make sure that the previous span is correctly reset
-    return withNewSpanContext(async () => {
+    // Check if tracing is disabled before attempting to use span context
+    const provider = getGlobalTraceProvider();
+    const disabled = provider.isDisabled();
+
+    if (disabled) {
+      // When tracing is disabled, create a NoopSpan and call the function directly
       const span = createSpan(...args);
-      setCurrentSpan(span);
       try {
         span.start();
         return await fn(span);
@@ -47,9 +50,49 @@ function _withSpanFactory<
         throw error;
       } finally {
         span.end();
-        resetCurrentSpan();
       }
-    });
+    }
+
+    // Try to use trace context, but fall back to NoopSpan if no context exists
+    try {
+      // Creating a new span context to make sure that the previous span is correctly reset
+      return await withNewSpanContext(async () => {
+        const span = createSpan(...args);
+        setCurrentSpan(span);
+        try {
+          span.start();
+          return await fn(span);
+        } catch (error: any) {
+          span.setError({
+            message: error.message,
+            data: error.data,
+          });
+          throw error;
+        } finally {
+          span.end();
+          resetCurrentSpan();
+        }
+      });
+    } catch (error: any) {
+      // If we get "No existing trace found", fall back to creating a NoopSpan
+      if (error.message === 'No existing trace found') {
+        const span = createSpan(...args);
+        try {
+          span.start();
+          return await fn(span);
+        } catch (fnError: any) {
+          span.setError({
+            message: fnError.message,
+            data: fnError.data,
+          });
+          throw fnError;
+        } finally {
+          span.end();
+        }
+      }
+      // Re-throw other errors
+      throw error;
+    }
   };
 }
 
