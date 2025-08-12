@@ -33,7 +33,7 @@ import {
   setTracingDisabled,
 } from '../src/tracing';
 
-import { withAgentSpan } from '../src/tracing/createSpans';
+import { withAgentSpan, withResponseSpan } from '../src/tracing/createSpans';
 
 import { TraceProvider } from '../src/tracing/provider';
 
@@ -304,6 +304,26 @@ describe('TraceProvider disabled behaviour', () => {
       trace,
     );
     expect(span).toBeInstanceOf(NoopSpan);
+  });
+
+  it('withResponseSpan should work when tracing is disabled', async () => {
+    const originalDisabled = new TraceProvider().isDisabled();
+
+    try {
+      // Set tracing disabled
+      setTracingDisabled(true);
+
+      // This should not throw "No existing trace found" error
+      const result = await withResponseSpan(async (span) => {
+        expect(span).toBeInstanceOf(NoopSpan);
+        return { success: true };
+      });
+
+      expect(result).toEqual({ success: true });
+    } finally {
+      // Restore original state
+      setTracingDisabled(originalDisabled);
+    }
   });
 });
 
